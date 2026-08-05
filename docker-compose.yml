@@ -1,0 +1,23 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: hardstuck-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - hardstuck_mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: hardstuck
+
+  redis:
+    image: redis:7-alpine
+    container_name: hardstuck-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - hardstuck_redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  hardstuck_mongo_data:
+  hardstuck_redis_data:

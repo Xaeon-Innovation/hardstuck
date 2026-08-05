@@ -1,0 +1,20 @@
+{
+  "name": "hardstuck",
+  "private": true,
+  "version": "0.1.0",
+  "description": "HardStuck — game boosting and services platform",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @hardstuck/api dev",
+    "dev:web": "pnpm --filter @hardstuck/web dev",
+    "build": "pnpm -r run build",
+    "seed": "pnpm --filter @hardstuck/api seed",
+    "lint": "pnpm -r run lint",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
