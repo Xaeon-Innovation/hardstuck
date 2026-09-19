@@ -1,17 +1,20 @@
 {
   "name": "hardstuck",
   "private": true,
-  "version": "0.1.0",
-  "description": "HardStuck — game boosting and services platform",
+  "version": "0.2.0",
+  "description": "HardStuck — matched-pool ranked boosting platform",
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
-    "dev:api": "pnpm --filter @hardstuck/api dev",
-    "dev:web": "pnpm --filter @hardstuck/web dev",
-    "build": "pnpm -r run build",
-    "seed": "pnpm --filter @hardstuck/api seed",
-    "lint": "pnpm -r run lint",
+    "dev": "pnpm --filter @hardstuck/web dev",
+    "build": "pnpm --filter @hardstuck/shared build && pnpm --filter @hardstuck/web build",
+    "lint": "pnpm -r --filter @hardstuck/web --filter @hardstuck/shared run lint",
+    "db:push": "pnpm --filter @hardstuck/web db:push",
+    "db:studio": "pnpm --filter @hardstuck/web db:studio",
+    "seed:admin": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/seed-admin.ts",
+    "seed:listings": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/seed-listings.ts",
+    "backup:pg": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-pg.ps1",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "cron:orders": "curl -s -X POST -H \"Authorization: Bearer $env:CRON_SECRET\" http://localhost:3000/api/cron/orders"
   },
   "engines": {
     "node": ">=20"

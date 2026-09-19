@@ -9,6 +9,9 @@ coverage/
 .turbo/
 *.tsbuildinfo
 apps/web/.env
-apps/api/.env
+apps/web/.next
+backups/
+apps/web/public/uploads/
 .idea/
 .vscode/
+drizzle/meta/

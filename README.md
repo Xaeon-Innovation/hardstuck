@@ -1,71 +1,55 @@
 # HardStuck
 
-Game boosting and services platform (MERN). Clients order Solo/Duo boosts for LoL, Valorant, and Apex; verified boosters claim jobs; payments run through **Paymob** (USD default, multi-currency).
+Matched-pool ranked boosting for **League of Legends** and **Valorant** (Solo / Duo). The platform assigns verified boosters and acts as merchant of record for the client order.
 
-## Stack
+## Stack (current)
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React 18, TypeScript, Vite, Tailwind, Socket.io client |
-| Backend | Node.js, Express, TypeScript, Socket.io, Bull |
-| Database | MongoDB 7 + Mongoose |
+| App | Next.js (App Router) + TypeScript |
+| DB | PostgreSQL 16 + Drizzle |
+| Auth | Better Auth (client / booster / admin roles) |
 | Cache / jobs | Redis 7 |
-| Payments | Paymob Intention API + Unified Checkout + HMAC webhooks |
+| Payments | `PaymentPort` → Polar (primary) / manual (soft-launch) / Stripe (later) |
 
-## Monorepo
+Vocabulary: [`CONTEXT.md`](./CONTEXT.md) · Decisions: [`docs/adr/`](./docs/adr/) · Plan: [`docs/IMPLEMENTATION-PLAN.md`](./docs/IMPLEMENTATION-PLAN.md) · Future: [`docs/FUTURE.md`](./docs/FUTURE.md)
 
-```
-apps/api      — Express API
-apps/web      — React SPA
-packages/shared — Shared enums, Zod schemas
-```
+> The old Express + Mongo + Paymob scaffold lives under [`legacy/`](./legacy/) and is **frozen**.
 
 ## Quick start
 
 ```bash
-# Requires Node 20+, pnpm, Docker
+# Node 20+, pnpm, Docker
 cp .env.example .env
 
 pnpm install
-pnpm docker:up          # MongoDB + Redis
+pnpm docker:up          # Postgres :5434 + Redis :6380
 pnpm --filter @hardstuck/shared build
-pnpm seed               # games, ranks, services, admin
-pnpm dev                # API :5000 + Web :5173
+pnpm db:push            # apply Drizzle schema
+pnpm dev                # http://localhost:3000
 ```
 
-**Seed admin:** `admin@hardstuck.local` / `AdminPass123!` (override via `.env`)
+> **Ports:** Host `5432`/`6379` are often taken (e.g. other Docker apps). Compose maps **Postgres → localhost:5434** and **Redis → localhost:6380**. Match `DATABASE_URL` / `REDIS_URL` in `.env` (see `.env.example`).
 
-### Smoke flow
+Health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
 
-1. Open http://localhost:5173  
-2. Register a client (or log in as admin)  
-3. **Order boost** → select game/ranks → Get quote → Pay with Paymob  
-4. Without live Paymob keys, payment is **stubbed** and auto-simulated into `in_queue`
+### Payments
 
-## Paymob
-
-Env vars (see `.env.example`):
-
-- `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, `PAYMOB_HMAC_SECRET`
-- `PAYMOB_INTEGRATION_ID_CARD`
-- `PAYMOB_DEFAULT_CURRENCY=USD`
-- `PAYMOB_SUPPORTED_CURRENCIES=USD,EGP,AED,SAR,EUR,GBP`
-
-Webhook: `POST /api/payments/paymob/webhook?hmac=...`  
-Dev simulate: `POST /api/payments/paymob/simulate-success/:orderId`
-
-Escrow is **platform-held** (merchant account) with an internal booster earnings ledger and a weekly payout job shell — not Stripe Connect.
-
-## Docs
-
-- [BRD-FRS.md](./BRD-FRS.md) — product & technical requirements  
-- [TASKS.md](./TASKS.md) — implementation checklist (MVP → Phase 2)
+- Default soft-launch: `PAYMENT_PROVIDER=manual` in `.env`
+- Polar: see [`docs/POLAR-SETUP.md`](./docs/POLAR-SETUP.md) — set `PAYMENT_PROVIDER=polar`, tokens, custom-price `POLAR_PRODUCT_ID`, webhook → `/api/webhooks/polar`
+- Escrow is an **internal ledger**, not Polar/Stripe Connect splits ([ADR 0004](./docs/adr/0004-ledger-escrow.md))
+- Cron timers: `POST /api/cron/orders` with `Authorization: Bearer $CRON_SECRET`
+- Promote admin: register user, then `pnpm --filter @hardstuck/web exec tsx --env-file=../../.env scripts/promote-admin.ts you@email.com`
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Run API + web |
-| `pnpm seed` | Seed MongoDB |
-| `pnpm build` | Build all packages |
-| `pnpm docker:up` / `docker:down` | Local Mongo + Redis |
+| `pnpm dev` | Next.js on :3000 |
+| `pnpm build` | Shared + web production build |
+| `pnpm db:push` | Push Drizzle schema to Postgres |
+| `pnpm docker:up` / `docker:down` | Local Postgres + Redis |
+
+## Phase status
+
+Phase 0 (foundations) in progress — see [`docs/IMPLEMENTATION-PLAN.md`](./docs/IMPLEMENTATION-PLAN.md) and [`TASKS.md`](./TASKS.md).
