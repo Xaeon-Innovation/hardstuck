@@ -101,7 +101,7 @@ export default function AdminPayoutsPage() {
                 <div className="mt-1 text-sm text-hs-mute">
                   {order.game} · {order.serviceType} ·{" "}
                   <Link
-                    href={`/orders/${order.id}`}
+                    href={`/notifications?order=${order.id}`}
                     className="text-hs-signal underline"
                   >
                     order

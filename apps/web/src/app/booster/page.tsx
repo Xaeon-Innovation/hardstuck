@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useBoosterOfferStream } from "@/components/booster-live-provider";
 import { SiteShell } from "@/components/site-shell";
 import { rankIconSrc } from "@/lib/assets";
+import type { BoosterLiveOfferPayload } from "@/lib/booster-live-events";
+import { authClient } from "@/lib/auth-client";
+import { hasPlatformWideAccess, isBooster } from "@/lib/roles";
 
 type OfferRow = {
   offer: { id: string; expiresAt: string };
@@ -38,6 +42,15 @@ type AvailableOrder = {
 
 export default function BoosterDashboardPage() {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const adminView = hasPlatformWideAccess(role);
+
+  useEffect(() => {
+    if (isBooster(role) && !hasPlatformWideAccess(role)) {
+      router.replace("/notifications");
+    }
+  }, [role, router]);
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [earnings, setEarnings] = useState({
@@ -82,6 +95,21 @@ export default function BoosterDashboardPage() {
     load();
   }, []);
 
+  const onLiveOffer = useCallback((payload: BoosterLiveOfferPayload) => {
+    setOffers((prev) => {
+      if (prev.some((row) => row.offer.id === payload.offer.id)) return prev;
+      return [
+        {
+          offer: payload.offer,
+          order: payload.order,
+        },
+        ...prev,
+      ];
+    });
+  }, []);
+
+  useBoosterOfferStream(onLiveOffer);
+
   function accept(offerId: string) {
     startTransition(async () => {
       const res = await fetch("/api/booster/offers", {
@@ -94,7 +122,11 @@ export default function BoosterDashboardPage() {
         setError(data.error ?? "Accept failed");
         return;
       }
-      router.push(`/orders/${data.orderId}`);
+      router.push(
+        typeof data.chatUrl === "string"
+          ? data.chatUrl
+          : `/notifications?order=${data.orderId}`,
+      );
     });
   }
 
@@ -128,11 +160,23 @@ export default function BoosterDashboardPage() {
 
   return (
     <SiteShell>
-      <p className="hs-page-kicker">Booster</p>
-      <h1 className="hs-page-title">Desk</h1>
-      <p className="hs-page-lead">
-        Open offers, active orders, and escrow earnings.
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="hs-page-kicker">{adminView ? "Admin" : "Booster"}</p>
+          <h1 className="hs-page-title">Desk</h1>
+          <p className="hs-page-lead">
+            {adminView
+              ? "Platform-wide pool offers and every order."
+              : "Open offers, active orders, and escrow earnings."}
+          </p>
+        </div>
+        <Link
+          href="/notifications"
+          className="hs-btn-ghost px-4 py-2 text-xs"
+        >
+          Notifications
+        </Link>
+      </div>
 
         {error ? <p className="mt-4 text-hs-danger">{error}</p> : null}
         {payoutMsg ? <p className="mt-4 text-hs-ok">{payoutMsg}</p> : null}
@@ -270,14 +314,23 @@ export default function BoosterDashboardPage() {
                     <span className="font-display text-hs-signal">
                       ${(order.amountUsdCents / 100).toFixed(2)}
                     </span>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => accept(offer.id)}
-                      className="hs-btn-primary px-3 py-2 text-xs"
-                    >
-                      Accept
-                    </button>
+                    {isBooster(role) ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => accept(offer.id)}
+                        className="hs-btn-primary px-3 py-2 text-xs"
+                      >
+                        Accept
+                      </button>
+                    ) : (
+                      <Link
+                        href={`/notifications?order=${order.id}`}
+                        className="hs-btn-ghost px-3 py-2 text-xs"
+                      >
+                        View
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))
@@ -296,7 +349,7 @@ export default function BoosterDashboardPage() {
               orders.map((o) => (
                 <Link
                   key={o.id}
-                  href={`/orders/${o.id}`}
+                  href={`/notifications?order=${o.id}&chat=1`}
                   className="hs-panel flex flex-wrap items-center justify-between gap-4 p-4 hover:border-hs-signal/40"
                 >
                   <div className="flex items-center gap-3 text-sm text-hs-chalk">
@@ -317,9 +370,14 @@ export default function BoosterDashboardPage() {
                       </span>
                     </span>
                   </div>
-                  <span className="font-display text-hs-signal">
-                    ${(o.amountUsdCents / 100).toFixed(2)}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-display text-hs-signal">
+                      ${(o.amountUsdCents / 100).toFixed(2)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-hs-signal">
+                      Live chat →
+                    </span>
+                  </div>
                 </Link>
               ))
             )}

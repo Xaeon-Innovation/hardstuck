@@ -6,12 +6,18 @@ import {
   expireOpenOffers,
 } from "@/server/orders/assignment";
 import { recordLedger, transitionOrder } from "@/server/orders/service";
-import { AUTO_COMPLETE_MS, RELEASE_HOLD_MS } from "@/server/orders/transitions";
+import {
+  AUTO_COMPLETE_MS,
+  CLIENT_CONFIRM_DEADLINE_MS,
+  RELEASE_HOLD_MS,
+} from "@/server/orders/transitions";
 import { wipeDueCredentials } from "@/server/vault/service";
 import { notifyOrderEvent } from "@/server/notifications/email";
+import { notifyAdminsClientConfirmOverdue } from "@/server/notifications/admin-alerts";
 
 export type JobResult = {
   expiredOffers: number;
+  confirmEscalated: number;
   autoCompleted: number;
   released: number;
   reoffered: number;
@@ -21,7 +27,8 @@ export type JobResult = {
 /**
  * Sweep timers:
  * 1) Expire stale offers → expired_offer → re-offer
- * 2) Auto-complete delivered orders after silence
+ * 2) Escalate delivered orders when client misses 2h confirm window
+ * 3) Auto-complete delivered orders after extended silence
  * 3) Release completed orders after hold → booster_payable ledger
  * 4) Wipe Solo vault after retention
  */
@@ -29,6 +36,7 @@ export async function processOrderTimers(now = new Date()): Promise<JobResult> {
   const db = getDb();
   const result: JobResult = {
     expiredOffers: 0,
+    confirmEscalated: 0,
     autoCompleted: 0,
     released: 0,
     reoffered: 0,
@@ -55,6 +63,31 @@ export async function processOrderTimers(now = new Date()): Promise<JobResult> {
     } catch {
       // no boosters available — stays expired_offer / paid path
     }
+  }
+
+  const confirmCutoff = new Date(now.getTime() - CLIENT_CONFIRM_DEADLINE_MS);
+  const overdueConfirm = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, "delivered"),
+        isNotNull(orders.deliveredAt),
+        lte(orders.deliveredAt, confirmCutoff),
+        isNull(orders.confirmEscalatedAt),
+      ),
+    );
+
+  for (const order of overdueConfirm) {
+    await notifyAdminsClientConfirmOverdue({
+      orderId: order.id,
+      detail: "Client did not confirm within 2 hours — admin may confirm completion.",
+    });
+    await db
+      .update(orders)
+      .set({ confirmEscalatedAt: now, updatedAt: now })
+      .where(eq(orders.id, order.id));
+    result.confirmEscalated += 1;
   }
 
   const deliveredCutoff = new Date(now.getTime() - AUTO_COMPLETE_MS);

@@ -542,7 +542,7 @@ export function BoostCalculator() {
         if (res.status === 401) router.push("/login");
         return;
       }
-      router.push(`/orders/${data.orderId}`);
+      router.push(`/notifications?order=${data.orderId}`);
     });
   }
 

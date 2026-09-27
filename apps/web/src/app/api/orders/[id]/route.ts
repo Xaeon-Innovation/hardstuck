@@ -8,6 +8,7 @@ import { transitionOrder } from "@/server/orders/service";
 import { getPaymentPort } from "@/server/payments";
 import { RELEASE_HOLD_MS } from "@/server/orders/transitions";
 import { randomUUID } from "crypto";
+import { boosterHasPendingOfferForOrder } from "@/server/orders/booster-access";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -28,16 +29,39 @@ export async function GET(_req: Request, ctx: Ctx) {
   const isOwner = order.clientUserId === session.user.id;
   const isBooster = order.boosterUserId === session.user.id;
   const isAdmin = role === "admin";
-  if (!isOwner && !isBooster && !isAdmin) {
+  const pendingOffer =
+    role === "booster" || role === "admin"
+      ? await boosterHasPendingOfferForOrder(session.user.id, id)
+      : false;
+  if (!isOwner && !isBooster && !isAdmin && !pendingOffer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const previewOnly = pendingOffer && !isBooster && !isOwner && !isAdmin;
+
   return NextResponse.json({
-    order,
+    order: previewOnly
+      ? {
+          id: order.id,
+          status: order.status,
+          game: order.game,
+          serviceType: order.serviceType,
+          startRankKey: order.startRankKey,
+          endRankKey: order.endRankKey,
+          server: order.server,
+          queue: order.queue,
+          divisions: order.divisions,
+          amountUsdCents: order.amountUsdCents,
+          contractorShareUsdCents: order.contractorShareUsdCents,
+          skuSlug: order.skuSlug,
+        }
+      : order,
+    previewOnly,
     paymentProvider: process.env.PAYMENT_PROVIDER ?? "manual",
     allowSimulatePay:
-      process.env.NODE_ENV !== "production" ||
-      (process.env.PAYMENT_PROVIDER ?? "manual") === "manual",
+      !previewOnly &&
+      (process.env.NODE_ENV !== "production" ||
+        (process.env.PAYMENT_PROVIDER ?? "manual") === "manual"),
   });
 }
 
@@ -56,11 +80,31 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!order) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (order.clientUserId !== session.user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const role = (session.user as { role?: string }).role;
+  const isClient = order.clientUserId === session.user.id;
+  const isAdmin = role === "admin";
 
   try {
+    if (action === "checkout" || action === "pay") {
+      if (!isClient) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    if (action === "confirm") {
+      if (!isClient && !isAdmin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      if (order.status !== "delivered") {
+        return NextResponse.json(
+          { error: "Order is not awaiting confirmation" },
+          { status: 400 },
+        );
+      }
+    } else if (!isClient) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     if (action === "checkout") {
       const port = getPaymentPort();
       if (port.provider === "manual") {
@@ -78,8 +122,8 @@ export async function POST(req: Request, ctx: Ctx) {
         amountUsdCents: order.amountUsdCents,
         currency: "USD",
         customerEmail: session.user.email,
-        successUrl: `${appUrl}/orders/${order.id}?paid=1&checkout_id={CHECKOUT_ID}`,
-        cancelUrl: `${appUrl}/orders/${order.id}`,
+        successUrl: `${appUrl}/notifications?order=${order.id}&paid=1&checkout_id={CHECKOUT_ID}`,
+        cancelUrl: `${appUrl}/notifications?order=${order.id}`,
       });
 
       await db

@@ -59,7 +59,7 @@ export default function AdminOrdersPage() {
       setError(null);
       setMessage(
         action === "run_timers"
-          ? `Timers: expired ${data.expiredOffers}, auto ${data.autoCompleted}, released ${data.released}`
+          ? `Timers: expired ${data.expiredOffers}, escalated ${data.confirmEscalated ?? 0}, auto ${data.autoCompleted}, released ${data.released}`
           : "Done",
       );
       load();
@@ -97,7 +97,7 @@ export default function AdminOrdersPage() {
             >
               <div>
                 <Link
-                  href={`/orders/${o.id}`}
+                  href={`/notifications?order=${o.id}`}
                   className="font-mono text-xs text-hs-signal underline"
                 >
                   {o.id.slice(0, 8)}…
@@ -118,6 +118,15 @@ export default function AdminOrdersPage() {
                     onClick={() => act("mark_paid", o.id)}
                   >
                     Mark paid
+                  </button>
+                ) : null}
+                {o.status === "delivered" ? (
+                  <button
+                    type="button"
+                    className="hs-btn-primary px-3 py-1.5 text-[10px]"
+                    onClick={() => act("confirm", o.id)}
+                  >
+                    Confirm delivery
                   </button>
                 ) : null}
                 {["paid", "expired_offer"].includes(o.status) ? (

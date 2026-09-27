@@ -124,6 +124,8 @@ export const orders = pgTable("orders", {
   assignedAt: timestamp("assigned_at"),
   startedAt: timestamp("started_at"),
   deliveredAt: timestamp("delivered_at"),
+  /** Set when client did not confirm within deadline — admins notified. */
+  confirmEscalatedAt: timestamp("confirm_escalated_at"),
   completedAt: timestamp("completed_at"),
   releaseAt: timestamp("release_at"),
   releasedAt: timestamp("released_at"),
@@ -242,6 +244,8 @@ export const boosterProfiles = pgTable("booster_profiles", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   status: boosterVerificationStatusEnum("status").notNull().default("pending"),
+  /** When false, booster is excluded from new pool offers. */
+  queueOnline: boolean("queue_online").notNull().default(true),
   games: jsonb("games").$type<string[]>().notNull().default([]),
   reviewNote: text("review_note"),
   reviewedByUserId: text("reviewed_by_user_id").references(() => user.id),

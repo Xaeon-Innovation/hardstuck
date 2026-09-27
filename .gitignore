@@ -9,6 +9,7 @@ coverage/
 .turbo/
 *.tsbuildinfo
 apps/web/.env
+LOCAL-ACCESS.txt
 apps/web/.next
 backups/
 apps/web/public/uploads/

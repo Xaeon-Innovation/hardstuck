@@ -7,6 +7,7 @@ export type NotifyEvent =
   | "order_offered"
   | "order_assigned"
   | "order_delivered"
+  | "client_confirm_overdue"
   | "order_completed"
   | "order_disputed"
   | "chat_message"

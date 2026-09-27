@@ -11,6 +11,8 @@
     "db:studio": "pnpm --filter @hardstuck/web db:studio",
     "seed:admin": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/seed-admin.ts",
     "seed:listings": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/seed-listings.ts",
+    "demo:lol-offer": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/demo-lol-offer-notification.ts auto",
+    "seed:booster-queue": "pnpm --filter @hardstuck/web exec tsx --env-file=.env scripts/seed-booster-queue.ts 5",
     "backup:pg": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-pg.ps1",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

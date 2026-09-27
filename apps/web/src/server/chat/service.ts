@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { orderMessages, orders, user } from "@/server/db/schema";
 import { notifyOrderEvent } from "@/server/notifications/email";
+import { publishOrderChatUpdate } from "@/server/notifications/order-chat-live";
 
 const MAX_BODY = 4000;
 
@@ -62,11 +63,16 @@ export async function postMessage(opts: {
     role: opts.role,
   });
 
-  // Chat opens once paid (assignment / fulfillment phase)
   if (
     ["draft", "awaiting_payment", "cancelled", "refunded"].includes(order.status)
   ) {
     throw new Error("Chat not available for this order status");
+  }
+
+  const isAdmin = opts.role === "admin";
+  const isClient = order.clientUserId === opts.senderUserId;
+  if (!order.boosterUserId && isClient && !isAdmin) {
+    throw new Error("Live chat opens when a booster accepts your order");
   }
 
   const db = getDb();
@@ -91,5 +97,48 @@ export async function postMessage(opts: {
     });
   }
 
+  publishOrderChatUpdate(order.id, { type: "message.new", messageId: row!.id });
+
   return row!;
+}
+
+/** First message when booster accepts — opens the conversation. */
+export async function postBoosterAssignedWelcome(opts: {
+  orderId: string;
+  boosterUserId: string;
+}) {
+  const db = getDb();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, opts.orderId))
+    .limit(1);
+  if (!order || order.boosterUserId !== opts.boosterUserId) return;
+
+  const [existing] = await db
+    .select({ id: orderMessages.id })
+    .from(orderMessages)
+    .where(eq(orderMessages.orderId, opts.orderId))
+    .limit(1);
+  if (existing) return;
+
+  const body =
+    "I've accepted your order. Use this chat for updates, credentials, and questions — I'll keep you posted on progress.";
+  const [row] = await db
+    .insert(orderMessages)
+    .values({
+      orderId: opts.orderId,
+      senderUserId: opts.boosterUserId,
+      body,
+    })
+    .returning();
+
+  await notifyOrderEvent({
+    toUserId: order.clientUserId,
+    orderId: order.id,
+    event: "order_assigned",
+    detail: "Booster is ready — live chat is open",
+  });
+
+  publishOrderChatUpdate(order.id, { type: "message.new", messageId: row!.id });
 }

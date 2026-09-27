@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { and, desc, eq, isNull, or, gt } from "drizzle-orm";
+import { and, desc, eq, isNull, or, gt, sql } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import {
   boosterInvites,
@@ -92,10 +92,45 @@ export async function listApprovedBoosterIds(limit = 20) {
     .from(boosterProfiles)
     .innerJoin(user, eq(user.id, boosterProfiles.userId))
     .where(
-      and(eq(boosterProfiles.status, "approved"), eq(user.role, "booster")),
+      and(
+        eq(boosterProfiles.status, "approved"),
+        eq(user.role, "booster"),
+        eq(boosterProfiles.queueOnline, true),
+      ),
     )
     .limit(limit);
   return rows.map((r) => r.userId);
+}
+
+/** Approved boosters whose profile includes this game (offer routing). */
+export async function listApprovedBoosterIdsForGame(game: string, limit = 20) {
+  const db = getDb();
+  const gameJson = JSON.stringify([game]);
+  const rows = await db
+    .select({ userId: boosterProfiles.userId })
+    .from(boosterProfiles)
+    .innerJoin(user, eq(user.id, boosterProfiles.userId))
+    .where(
+      and(
+        eq(boosterProfiles.status, "approved"),
+        eq(user.role, "booster"),
+        eq(boosterProfiles.queueOnline, true),
+        sql`${boosterProfiles.games} @> ${gameJson}::jsonb`,
+      ),
+    )
+    .limit(limit);
+  return rows.map((r) => r.userId);
+}
+
+export async function setBoosterQueueOnline(userId: string, online: boolean) {
+  const profile = await getBoosterProfile(userId);
+  if (!profile) throw new Error("Booster profile required");
+  const db = getDb();
+  await db
+    .update(boosterProfiles)
+    .set({ queueOnline: online, updatedAt: new Date() })
+    .where(eq(boosterProfiles.userId, userId));
+  return { queueOnline: online };
 }
 
 export async function createBoosterInvite(opts: {

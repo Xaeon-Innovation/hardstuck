@@ -1,10 +1,37 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { orderOffers, orders, user } from "@/server/db/schema";
+import { postBoosterAssignedWelcome } from "@/server/chat/service";
 import { notifyOrderEvent } from "@/server/notifications/email";
-import { listApprovedBoosterIds } from "@/server/trust/service";
+import {
+  publishAdminLiveOffer,
+  publishBoosterLiveEvent,
+} from "@/server/notifications/booster-live";
+import { listApprovedBoosterIdsForGame } from "@/server/trust/service";
 import { OFFER_TTL_MS } from "./transitions";
 import { transitionOrder } from "./service";
+
+/** Max concurrent assigned + in-progress orders per booster. */
+export const BOOSTER_MAX_ACTIVE_ORDERS = 3;
+
+export async function countActiveBoosterOrders(boosterUserId: string) {
+  const db = getDb();
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.boosterUserId, boosterUserId),
+        inArray(orders.status, ["assigned", "in_progress"]),
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
+export async function boosterCanAcceptMoreOrders(boosterUserId: string) {
+  const active = await countActiveBoosterOrders(boosterUserId);
+  return active < BOOSTER_MAX_ACTIVE_ORDERS;
+}
 
 /**
  * Hybrid assignment: offer paid orders to verified boosters only.
@@ -21,15 +48,20 @@ export async function createOffersForOrder(orderId: string, limit = 5) {
     throw new Error("Order not eligible for offers");
   }
 
-  const approvedIds = await listApprovedBoosterIds(limit);
-  if (approvedIds.length === 0) {
+  const approvedIds = await listApprovedBoosterIdsForGame(order.game, limit * 2);
+  const eligibleIds: string[] = [];
+  for (const id of approvedIds) {
+    if (await boosterCanAcceptMoreOrders(id)) eligibleIds.push(id);
+    if (eligibleIds.length >= limit) break;
+  }
+  if (eligibleIds.length === 0) {
     return { offered: 0 };
   }
 
   const boosters = await db
     .select()
     .from(user)
-    .where(and(eq(user.role, "booster"), inArray(user.id, approvedIds)))
+    .where(and(eq(user.role, "booster"), inArray(user.id, eligibleIds)))
     .limit(limit);
 
   if (boosters.length === 0) {
@@ -37,19 +69,32 @@ export async function createOffersForOrder(orderId: string, limit = 5) {
   }
 
   const expiresAt = new Date(Date.now() + OFFER_TTL_MS);
-  await db.insert(orderOffers).values(
-    boosters.map((b) => ({
-      orderId,
-      boosterUserId: b.id,
-      expiresAt,
-      status: "pending" as const,
-    })),
-  );
+  const insertedOffers = await db
+    .insert(orderOffers)
+    .values(
+      boosters.map((b) => ({
+        orderId,
+        boosterUserId: b.id,
+        expiresAt,
+        status: "pending" as const,
+      })),
+    )
+    .returning();
 
   await transitionOrder(orderId, "offered", {
     offeredAt: new Date(),
     offerExpiresAt: expiresAt,
   });
+
+  const orderSummary = {
+    id: order.id,
+    game: order.game,
+    serviceType: order.serviceType,
+    startRankKey: order.startRankKey,
+    endRankKey: order.endRankKey,
+    server: order.server,
+    amountUsdCents: order.amountUsdCents,
+  };
 
   for (const b of boosters) {
     await notifyOrderEvent({
@@ -57,6 +102,24 @@ export async function createOffersForOrder(orderId: string, limit = 5) {
       orderId,
       event: "order_offered",
     });
+  }
+
+  const livePayload = {
+    type: "offer.new" as const,
+    offer: { id: "", expiresAt: "" },
+    order: orderSummary,
+  };
+
+  for (const offer of insertedOffers) {
+    const payload = {
+      ...livePayload,
+      offer: {
+        id: offer.id,
+        expiresAt: offer.expiresAt.toISOString(),
+      },
+    };
+    publishBoosterLiveEvent(offer.boosterUserId, payload);
+    publishAdminLiveOffer(payload);
   }
 
   return { offered: boosters.length, expiresAt };
@@ -82,6 +145,13 @@ export async function acceptOffer(offerId: string, boosterUserId: string) {
       .set({ status: "expired", respondedAt: new Date() })
       .where(eq(orderOffers.id, offerId));
     throw new Error("Offer expired");
+  }
+
+  const activeCount = await countActiveBoosterOrders(boosterUserId);
+  if (activeCount >= BOOSTER_MAX_ACTIVE_ORDERS) {
+    throw new Error(
+      `Active order limit reached (${BOOSTER_MAX_ACTIVE_ORDERS}). Deliver or complete one before accepting another.`,
+    );
   }
 
   await db
@@ -110,6 +180,10 @@ export async function acceptOffer(offerId: string, boosterUserId: string) {
     .where(eq(orders.id, offer.orderId))
     .limit(1);
   if (assigned) {
+    await postBoosterAssignedWelcome({
+      orderId: assigned.id,
+      boosterUserId,
+    });
     await notifyOrderEvent({
       toUserId: assigned.clientUserId,
       orderId: assigned.id,
@@ -155,5 +229,22 @@ export async function listOpenOffersForBooster(boosterUserId: string) {
         inArray(orders.status, ["offered"]),
       ),
     );
+  return offers.filter((row) => row.offer.expiresAt.getTime() > Date.now());
+}
+
+/** All pending pool offers (admin oversight). */
+export async function listAllOpenOffers(limit = 100) {
+  const db = getDb();
+  const offers = await db
+    .select({
+      offer: orderOffers,
+      order: orders,
+    })
+    .from(orderOffers)
+    .innerJoin(orders, eq(orderOffers.orderId, orders.id))
+    .where(
+      and(eq(orderOffers.status, "pending"), inArray(orders.status, ["offered"])),
+    )
+    .limit(limit);
   return offers.filter((row) => row.offer.expiresAt.getTime() > Date.now());
 }
