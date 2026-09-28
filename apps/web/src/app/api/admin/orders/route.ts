@@ -7,6 +7,7 @@ import { requireSession } from "@/server/auth/session";
 import { recordLedger, transitionOrder } from "@/server/orders/service";
 import { createOffersForOrder } from "@/server/orders/assignment";
 import { processOrderTimers } from "@/server/orders/jobs";
+import { RELEASE_HOLD_MS } from "@/server/orders/transitions";
 
 async function requireAdmin() {
   const session = await requireSession();
@@ -104,6 +105,30 @@ export async function POST(req: Request) {
           ),
         );
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "confirm" && body.orderId) {
+      const db = getDb();
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, body.orderId))
+        .limit(1);
+      if (!order) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      if (order.status !== "delivered") {
+        return NextResponse.json(
+          { error: "Order is not awaiting confirmation" },
+          { status: 400 },
+        );
+      }
+      const releaseAt = new Date(Date.now() + RELEASE_HOLD_MS);
+      await transitionOrder(order.id, "completed", {
+        completedAt: new Date(),
+        releaseAt,
+      });
+      return NextResponse.json({ ok: true, releaseAt });
     }
 
     if (body.action === "reoffer" && body.orderId) {

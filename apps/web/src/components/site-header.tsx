@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { useBoosterLive } from "@/components/booster-live-provider";
+import { canUseBoosterDesk } from "@/lib/roles";
 
 function UserAvatar({
   name,
@@ -67,7 +69,10 @@ export function SiteHeader() {
     | { name?: string; email?: string; role?: string; image?: string | null }
     | undefined;
   const role = user?.role;
+  const isBoosterUser = role === "booster";
   const signedIn = Boolean(session?.user);
+  const live = useBoosterLive();
+  const alertCount = canUseBoosterDesk(role) ? (live?.unreadCount ?? 0) : 0;
   const [open, setOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const opsRef = useRef<HTMLDivElement>(null);
@@ -105,10 +110,25 @@ export function SiteHeader() {
         <nav className="hidden items-center gap-5 text-sm md:flex">
           <NavLink href="/boost">Calculator</NavLink>
           <NavLink href="/accounts">Accounts</NavLink>
-          {signedIn ? <NavLink href="/dashboard">Orders</NavLink> : null}
-          {(role === "booster" || role === "admin") && (
+          {signedIn && !isBoosterUser ? (
+            <NavLink href="/notifications">Orders</NavLink>
+          ) : null}
+          {signedIn ? (
+            <Link
+              href="/notifications"
+              className="relative text-hs-mute transition-colors hover:text-hs-chalk"
+            >
+              Notifications
+              {alertCount > 0 ? (
+                <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center bg-hs-signal px-1 text-[9px] font-bold text-hs-ink">
+                  {alertCount > 9 ? "9+" : alertCount}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
+          {role === "admin" ? (
             <NavLink href="/booster">Booster</NavLink>
-          )}
+          ) : null}
           {role === "admin" ? (
             <div className="relative" ref={opsRef}>
               <button
@@ -192,16 +212,22 @@ export function SiteHeader() {
           <NavLink href="/accounts" onClick={close}>
             Accounts
           </NavLink>
-          {signedIn ? (
-            <NavLink href="/dashboard" onClick={close}>
+          {signedIn && !isBoosterUser ? (
+            <NavLink href="/notifications" onClick={close}>
               Orders
             </NavLink>
           ) : null}
-          {(role === "booster" || role === "admin") && (
+          {role === "admin" ? (
             <NavLink href="/booster" onClick={close}>
               Booster
             </NavLink>
-          )}
+          ) : null}
+          {signedIn ? (
+            <NavLink href="/notifications" onClick={close}>
+              Notifications
+              {alertCount > 0 ? ` (${alertCount})` : ""}
+            </NavLink>
+          ) : null}
           {role === "admin" ? (
             <>
               <NavLink href="/admin/orders" onClick={close}>

@@ -80,12 +80,16 @@ export async function GET() {
 
   const db = getDb();
   const { eq, desc } = await import("drizzle-orm");
-  const rows = await db
-    .select()
-    .from(orders)
-    .where(eq(orders.clientUserId, session.user.id))
-    .orderBy(desc(orders.createdAt))
-    .limit(50);
+  const role = (session.user as { role?: string }).role;
+  const rows =
+    role === "admin"
+      ? await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(100)
+      : await db
+          .select()
+          .from(orders)
+          .where(eq(orders.clientUserId, session.user.id))
+          .orderBy(desc(orders.createdAt))
+          .limit(50);
 
   return NextResponse.json({ orders: rows });
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Archivo_Black, IBM_Plex_Sans } from "next/font/google";
+import { BoosterLiveProvider } from "@/components/booster-live-provider";
 import "./globals.css";
 
 const display = Archivo_Black({
@@ -39,7 +40,7 @@ export default function RootLayout({
           } as React.CSSProperties
         }
       >
-        {children}
+        <BoosterLiveProvider>{children}</BoosterLiveProvider>
       </body>
     </html>
   );

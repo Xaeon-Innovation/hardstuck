@@ -6,9 +6,11 @@ import { requireSession } from "@/server/auth/session";
 import { transitionOrder } from "@/server/orders/service";
 import {
   acceptOffer,
+  listAllOpenOffers,
   listOpenOffersForBooster,
 } from "@/server/orders/assignment";
 import { getBoosterProfile } from "@/server/trust/service";
+import { hasPlatformWideAccess, isAdmin } from "@/lib/roles";
 
 export async function GET() {
   const session = await requireSession();
@@ -31,7 +33,9 @@ export async function GET() {
     }
   }
 
-  const offers = await listOpenOffersForBooster(session.user.id);
+  const offers = hasPlatformWideAccess(role)
+    ? await listAllOpenOffers(100)
+    : await listOpenOffersForBooster(session.user.id);
   return NextResponse.json({ offers });
 }
 
@@ -63,7 +67,11 @@ export async function POST(req: Request) {
         }
       }
       const orderId = await acceptOffer(body.offerId, session.user.id);
-      return NextResponse.json({ ok: true, orderId });
+      return NextResponse.json({
+        ok: true,
+        orderId,
+        chatUrl: `/notifications?order=${orderId}`,
+      });
     }
 
     if (body.action === "start" && body.orderId) {
@@ -73,7 +81,10 @@ export async function POST(req: Request) {
         .from(orders)
         .where(eq(orders.id, body.orderId))
         .limit(1);
-      if (!order || order.boosterUserId !== session.user.id) {
+      if (
+        !order ||
+        (!isAdmin(role) && order.boosterUserId !== session.user.id)
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       await transitionOrder(order.id, "in_progress", { startedAt: new Date() });
@@ -87,11 +98,21 @@ export async function POST(req: Request) {
         .from(orders)
         .where(eq(orders.id, body.orderId))
         .limit(1);
-      if (!order || order.boosterUserId !== session.user.id) {
+      if (
+        !order ||
+        (!isAdmin(role) && order.boosterUserId !== session.user.id)
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       await transitionOrder(order.id, "delivered", {
         deliveredAt: new Date(),
+      });
+      const { notifyOrderEvent } = await import("@/server/notifications/email");
+      await notifyOrderEvent({
+        toUserId: order.clientUserId,
+        orderId: order.id,
+        event: "order_delivered",
+        detail: "Confirm completion within 2 hours.",
       });
       return NextResponse.json({ ok: true });
     }

@@ -31,6 +31,9 @@ export function assertTransition(from: OrderStatus, to: OrderStatus): void {
 /** Offer accept window (hybrid assignment) */
 export const OFFER_TTL_MS = 15 * 60 * 1000;
 
+/** Client must confirm delivery within this window (else admin is notified). */
+export const CLIENT_CONFIRM_DEADLINE_MS = 2 * 60 * 60 * 1000;
+
 /** Client silent after deliver → auto-complete */
 export const AUTO_COMPLETE_MS = 48 * 60 * 60 * 1000;
 

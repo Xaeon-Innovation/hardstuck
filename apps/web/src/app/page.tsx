@@ -13,6 +13,7 @@ import {
   IconFarm,
   IconLevelUp,
 } from "@/components/icons";
+import { PageSlideshow } from "@/components/page-slideshow";
 
 const HEROES = [
   { game: "lol" as const, label: "League of Legends" },
@@ -218,6 +219,20 @@ export default function HomePage() {
 
         <section className="border-t border-hs-line bg-hs-ink">
           <div className="mx-auto max-w-6xl px-5 py-14 sm:py-16">
+            <p className="hs-page-kicker">Tour</p>
+            <h2 className="hs-page-title">Pages at a glance</h2>
+            <p className="hs-page-lead">
+              Swipe through the main areas — calculator, notifications desk,
+              accounts, and signup.
+            </p>
+            <div className="mt-8">
+              <PageSlideshow />
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-hs-line bg-hs-panel/30">
+          <div className="mx-auto max-w-6xl px-5 py-14 sm:py-16">
             <p className="hs-page-kicker">Games</p>
             <h2 className="hs-page-title">Five titles. One pool.</h2>
             <p className="hs-page-lead">
@@ -258,7 +273,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="border-t border-hs-line bg-hs-panel/30">
+        <section className="border-t border-hs-line bg-hs-ink">
           <div className="mx-auto max-w-6xl px-5 py-14 sm:py-16">
             <p className="hs-page-kicker">What we sell</p>
             <h2 className="hs-page-title">Climb. Farm. Level. Buy.</h2>
@@ -350,8 +365,8 @@ export default function HomePage() {
               <Link href="/register" className="hs-btn-primary">
                 Apply for closed beta
               </Link>
-              <Link href="/booster" className="hs-btn-ghost">
-                Booster dashboard
+              <Link href="/notifications" className="hs-btn-ghost">
+                Booster queue
               </Link>
             </div>
           </div>
