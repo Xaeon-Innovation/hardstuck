@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CATALOGS, type GameSlug } from "@hardstuck/shared";
+import { CATALOGS, GameSlugs, type GameSlug } from "@hardstuck/shared";
+import {
+  RankStatsPanel,
+  type RankStatsView,
+} from "@/components/rank-stats-panel";
+import {
+  gameIdentityFields,
+  platformFromServer,
+} from "@/lib/game-identity";
 
 type Account = {
   id: string;
@@ -11,6 +19,8 @@ type Account = {
   server: string;
   profileUrl: string | null;
   note: string | null;
+  rankSnapshot?: RankStatsView | Record<string, unknown> | null;
+  rankSnapshotAt?: string | null;
 };
 
 type Proof = {
@@ -45,8 +55,13 @@ export function TrustProfilePanel({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [game, setGame] = useState<GameSlug>("lol");
+  const [riotName, setRiotName] = useState("");
+  const [riotTag, setRiotTag] = useState("");
+  const [server, setServer] = useState(CATALOGS.lol.servers[0]!.key);
+  const [draftStats, setDraftStats] = useState<RankStatsView | null>(null);
 
   const catalog = CATALOGS[game];
+  const identity = gameIdentityFields(game);
 
   function load() {
     fetch("/api/trust/me")
@@ -67,26 +82,47 @@ export function TrustProfilePanel({
     load();
   }, []);
 
+  useEffect(() => {
+    setServer(CATALOGS[game].servers[0]!.key);
+    setDraftStats(null);
+    setRiotTag("");
+  }, [game]);
+
   const ranks = useMemo(() => catalog.ranks, [catalog]);
 
   function saveAccount(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formEl = e.currentTarget;
-    const form = new FormData(formEl);
     startTransition(async () => {
       setError(null);
       setMessage(null);
+      const name = riotName.trim();
+      const tag = riotTag.trim();
+      if (!name) {
+        setError("Name is required");
+        return;
+      }
+      if (identity.tagRequired && !tag) {
+        setError("Tag is required");
+        return;
+      }
+      // Optional Apex UID / Marvel placeholder when no discriminator exists.
+      const savedTag = identity.tagRequired
+        ? tag
+        : tag || (game === "apex" ? "—" : server || "pc");
+
+      const profileUrl =
+        draftStats?.trackerUrls?.[0]?.url ?? undefined;
+
       const res = await fetch("/api/trust/me", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "upsert_account",
-          game: String(form.get("game")),
-          riotName: String(form.get("riotName")),
-          riotTag: String(form.get("riotTag")),
-          server: String(form.get("server")),
-          profileUrl: String(form.get("profileUrl") ?? "") || undefined,
-          note: String(form.get("note") ?? "") || undefined,
+          game,
+          riotName: name,
+          riotTag: savedTag,
+          server,
+          profileUrl,
         }),
       });
       const data = await res.json();
@@ -94,8 +130,28 @@ export function TrustProfilePanel({
         setError(typeof data.error === "string" ? data.error : "Save failed");
         return;
       }
-      setMessage("Account details saved.");
-      formEl.reset();
+
+      // Persist live snapshot against this account when lookup already ran.
+      await fetch("/api/rank/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          game,
+          name,
+          tag:
+            identity.tagRequired || (game === "apex" && tag)
+              ? tag
+              : undefined,
+          server,
+          platform: platformFromServer(game, server),
+          save: true,
+        }),
+      }).catch(() => undefined);
+
+      setMessage("Account saved with live rank lookup.");
+      setRiotName("");
+      setRiotTag("");
+      setDraftStats(null);
       load();
     });
   }
@@ -184,44 +240,55 @@ export function TrustProfilePanel({
           Game accounts
         </h2>
         <p className="text-sm text-hs-mute">
-          Riot Name#Tag used for Duo contact and booster verification.
+          Save Name#Tag for Duo contact, then look up live rank and stats in the
+          same place.
         </p>
 
         {accounts.length > 0 ? (
-          <ul className="space-y-2">
-            {accounts.map((a) => (
-              <li
-                key={a.id}
-                className="hs-panel flex flex-wrap items-center justify-between gap-3 p-3 text-sm"
-              >
-                <div>
-                  <span className="text-hs-chalk">
-                    {a.riotName}#{a.riotTag}
-                  </span>
-                  <span className="ml-2 text-hs-mute">
-                    {a.game.toUpperCase()} · {a.server}
-                  </span>
-                  {a.profileUrl ? (
-                    <a
-                      href={a.profileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ml-2 text-hs-signal underline"
+          <ul className="space-y-4">
+            {accounts.map((a) => {
+              const snap =
+                a.rankSnapshot &&
+                typeof a.rankSnapshot === "object" &&
+                "ok" in a.rankSnapshot
+                  ? (a.rankSnapshot as RankStatsView)
+                  : null;
+              const g = GameSlugs.includes(a.game as GameSlug)
+                ? (a.game as GameSlug)
+                : "lol";
+              return (
+                <li key={a.id} className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <div>
+                      <span className="text-hs-chalk">
+                        {a.riotName}#{a.riotTag}
+                      </span>
+                      <span className="ml-2 text-hs-mute">
+                        {a.game.toUpperCase()} · {a.server}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => removeAccount(a.id)}
+                      className="text-xs uppercase tracking-wider text-hs-mute hover:text-hs-danger"
                     >
-                      profile
-                    </a>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => removeAccount(a.id)}
-                  className="text-xs uppercase tracking-wider text-hs-mute hover:text-hs-danger"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
+                      Remove
+                    </button>
+                  </div>
+                  <RankStatsPanel
+                    game={g}
+                    defaultName={a.riotName}
+                    defaultTag={a.riotTag}
+                    defaultServer={a.server}
+                    embedded
+                    compact
+                    allowManualRank
+                    initialResult={snap}
+                  />
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="text-sm text-hs-mute">No accounts saved yet.</p>
@@ -234,15 +301,18 @@ export function TrustProfilePanel({
             onChange={(e) => setGame(e.target.value as GameSlug)}
             className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
           >
-            <option value="lol">League of Legends</option>
-            <option value="valorant">Valorant</option>
+            {GameSlugs.map((g) => (
+              <option key={g} value={g}>
+                {CATALOGS[g].name}
+              </option>
+            ))}
           </select>
           <select
             name="server"
-            key={`server-${game}`}
+            value={server}
+            onChange={(e) => setServer(e.target.value)}
             required
             className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
-            defaultValue={catalog.servers[0]?.key}
           >
             {catalog.servers.map((s) => (
               <option key={s.key} value={s.key}>
@@ -253,31 +323,41 @@ export function TrustProfilePanel({
           <input
             name="riotName"
             required
-            placeholder="Riot name"
-            className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
+            value={riotName}
+            onChange={(e) => setRiotName(e.target.value)}
+            placeholder={identity.namePlaceholder}
+            className={`border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk ${
+              identity.showTag ? "" : "sm:col-span-2"
+            }`}
           />
-          <input
-            name="riotTag"
-            required
-            placeholder="Tag (e.g. EUW)"
-            className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
-          />
-          <input
-            name="profileUrl"
-            placeholder="op.gg / tracker.gg URL (optional)"
-            className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk sm:col-span-2"
-          />
-          <input
-            name="note"
-            placeholder="Note (optional)"
-            className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk sm:col-span-2"
-          />
+          {identity.showTag ? (
+            <input
+              name="riotTag"
+              required={identity.tagRequired}
+              value={riotTag}
+              onChange={(e) => setRiotTag(e.target.value)}
+              placeholder={identity.tagPlaceholder}
+              className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
+            />
+          ) : null}
+          <div className="sm:col-span-2">
+            <RankStatsPanel
+              game={game}
+              defaultName={riotName}
+              defaultTag={riotTag}
+              defaultServer={server}
+              embedded
+              compact
+              allowManualRank
+              onResult={setDraftStats}
+            />
+          </div>
           <button
             type="submit"
             disabled={pending}
             className="border border-hs-signal/50 bg-hs-signal/10 py-2 text-xs uppercase tracking-widest text-hs-signal disabled:opacity-50 sm:col-span-2"
           >
-            Save account
+            {pending ? "Saving…" : "Save account"}
           </button>
         </form>
       </section>

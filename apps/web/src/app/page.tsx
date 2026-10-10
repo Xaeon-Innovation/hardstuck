@@ -53,7 +53,7 @@ const OFFERS = [
   {
     title: "Accounts",
     body: "Escrowed listings. Platform holds until transfer confirms.",
-    href: "/accounts",
+    href: "/marketplace?category=account",
     Icon: IconAccount,
   },
 ] as const;

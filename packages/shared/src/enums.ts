@@ -102,3 +102,30 @@ export const AccountSaleStatuses = [
   'cancelled',
 ] as const;
 export type AccountSaleStatus = (typeof AccountSaleStatuses)[number];
+
+/** Seller marketplace categories (G2G-style). Matched-pool HardStuck Boost is separate. */
+export const MarketplaceCategories = [
+  'boosting',
+  'account',
+  'coins',
+  'items',
+  'top_up',
+  'gift_card',
+  'coaching',
+] as const;
+export type MarketplaceCategory = (typeof MarketplaceCategories)[number];
+
+export const SupportTicketStatuses = [
+  'open',
+  'pending',
+  'resolved',
+] as const;
+export type SupportTicketStatus = (typeof SupportTicketStatuses)[number];
+
+export const SupportTicketPriorities = [
+  'low',
+  'normal',
+  'high',
+  'urgent',
+] as const;
+export type SupportTicketPriority = (typeof SupportTicketPriorities)[number];

@@ -21,6 +21,11 @@ import {
   OfferNotificationCard,
   type OfferNotification,
 } from "@/components/booster/offer-notification-card";
+import {
+  notifyBoosterOfferBrowser,
+  playBoosterOfferChime,
+  unlockBoosterAlertAudio,
+} from "@/lib/booster-alert-sound";
 
 type BoosterLiveContextValue = {
   connected: boolean;
@@ -81,6 +86,11 @@ export function BoosterLiveProvider({ children }: { children: React.ReactNode })
   const ingest = useCallback((payload: BoosterLiveOfferPayload) => {
     if (payload.type !== "offer.new") return;
     dispatchBoosterOffer(payload);
+    playBoosterOfferChime();
+    notifyBoosterOfferBrowser(
+      "New boost offer",
+      `${payload.order.game.toUpperCase()} · ${payload.order.serviceType} · $${(payload.order.amountUsdCents / 100).toFixed(2)}`,
+    );
     setFeed((prev) => pushFeed(prev, payload));
     setToasts((prev) => [
       ...prev.slice(-3),
@@ -91,6 +101,17 @@ export function BoosterLiveProvider({ children }: { children: React.ReactNode })
       },
     ]);
   }, []);
+
+  useEffect(() => {
+    if (!isBooster) return;
+    const unlock = () => unlockBoosterAlertAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [isBooster]);
 
   useEffect(() => {
     if (!isBooster) {

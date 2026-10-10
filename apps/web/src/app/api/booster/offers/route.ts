@@ -58,6 +58,13 @@ export async function POST(req: Request) {
   try {
     if (body.action === "accept" && body.offerId) {
       if (role === "booster") {
+        const { assertUserNotSuspended } = await import(
+          "@/server/access/guards"
+        );
+        const suspended = await assertUserNotSuspended(session.user.id);
+        if (suspended) {
+          return NextResponse.json({ error: suspended }, { status: 403 });
+        }
         const profile = await getBoosterProfile(session.user.id);
         if (profile?.status !== "approved") {
           return NextResponse.json(

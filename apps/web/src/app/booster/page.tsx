@@ -174,7 +174,7 @@ export default function BoosterDashboardPage() {
           href="/notifications"
           className="hs-btn-ghost px-4 py-2 text-xs"
         >
-          Notifications
+          Orders
         </Link>
       </div>
 

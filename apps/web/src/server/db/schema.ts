@@ -21,6 +21,8 @@ export const user = pgTable("user", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   role: userRoleEnum("role").notNull().default("client"),
   riskDisclosureAcceptedAt: timestamp("risk_disclosure_accepted_at"),
+  /** When set, user cannot use booster, seller, or checkout actions. */
+  suspendedAt: timestamp("suspended_at"),
 });
 
 export const session = pgTable("session", {
@@ -229,7 +231,19 @@ export const gameAccounts = pgTable("game_accounts", {
   profileUrl: text("profile_url"),
   note: text("note"),
   isPrimary: boolean("is_primary").notNull().default(true),
+  /** Last successful RankLookup payload (rank, LP/RR, peak, etc.). */
+  rankSnapshot: jsonb("rank_snapshot").$type<Record<string, unknown>>(),
+  rankSnapshotAt: timestamp("rank_snapshot_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** Admin force-off for matched-pool games (maintenance). Auto-coverage cannot override. */
+export const gameOverrides = pgTable("game_overrides", {
+  game: text("game").primaryKey(),
+  forceOffline: boolean("force_offline").notNull().default(false),
+  note: text("note"),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -385,12 +399,18 @@ export const accountListings = pgTable("account_listings", {
     .notNull()
     .references(() => user.id),
   game: text("game").notNull(),
+  /** Marketplace category — defaults to account for legacy rows. */
+  category: text("category").notNull().default("account"),
   title: text("title").notNull(),
   summary: text("summary").notNull(),
   rankLabel: text("rank_label"),
   skinsSummary: text("skins_summary"),
   server: text("server").notNull(),
   priceUsdCents: integer("price_usd_cents").notNull(),
+  /** Category-specific fields (rank from/to, denomination, session minutes, etc.). */
+  attributes: jsonb("attributes").$type<Record<string, unknown>>().notNull().default({}),
+  deliveryHours: integer("delivery_hours"),
+  stock: integer("stock"),
   status: listingStatusEnum("status").notNull().default("draft"),
   featured: boolean("featured").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -434,4 +454,78 @@ export const saleCredentials = pgTable("sale_credentials", {
   wipedAt: timestamp("wiped_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** Buyer rating after a completed marketplace sale. */
+export const listingRatings = pgTable("listing_ratings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  saleId: uuid("sale_id")
+    .notNull()
+    .unique()
+    .references(() => accountSales.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id")
+    .notNull()
+    .references(() => accountListings.id),
+  sellerUserId: text("seller_user_id")
+    .notNull()
+    .references(() => user.id),
+  buyerUserId: text("buyer_user_id")
+    .notNull()
+    .references(() => user.id),
+  stars: integer("stars").notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const supportTicketStatusEnum = pgEnum("support_ticket_status", [
+  "open",
+  "pending",
+  "resolved",
+]);
+
+export const supportTicketPriorityEnum = pgEnum("support_ticket_priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
+
+export const supportTickets = pgTable("support_tickets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id),
+  orderId: uuid("order_id").references(() => orders.id),
+  saleId: uuid("sale_id").references(() => accountSales.id),
+  subject: text("subject").notNull(),
+  status: supportTicketStatusEnum("status").notNull().default("open"),
+  priority: supportTicketPriorityEnum("priority").notNull().default("normal"),
+  assignedAdminUserId: text("assigned_admin_user_id").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const supportTicketReplies = pgTable("support_ticket_replies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ticketId: uuid("ticket_id")
+    .notNull()
+    .references(() => supportTickets.id, { onDelete: "cascade" }),
+  authorUserId: text("author_user_id")
+    .notNull()
+    .references(() => user.id),
+  body: text("body").notNull(),
+  isStaff: boolean("is_staff").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const adminAuditLog = pgTable("admin_audit_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorUserId: text("actor_user_id")
+    .notNull()
+    .references(() => user.id),
+  action: text("action").notNull(),
+  targetUserId: text("target_user_id").references(() => user.id),
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });

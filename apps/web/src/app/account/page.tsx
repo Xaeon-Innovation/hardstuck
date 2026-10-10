@@ -22,7 +22,7 @@ export default function AccountPage() {
       <p className="hs-page-kicker">Account</p>
       <h1 className="hs-page-title">Profile</h1>
       <p className="hs-page-lead">
-        Avatar, Riot account details, and booster verification.
+        Avatar, game accounts with live rank, and booster verification.
       </p>
 
       {isPending || !user ? (

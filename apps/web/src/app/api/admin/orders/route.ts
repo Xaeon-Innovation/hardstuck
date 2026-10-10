@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import type { OrderStatus } from "@hardstuck/shared";
 import { getDb } from "@/server/db";
@@ -17,16 +17,29 @@ async function requireAdmin() {
   return session;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const url = new URL(req.url);
+  const status = url.searchParams.get("status");
+  const game = url.searchParams.get("game");
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+
+  const conds = [];
+  if (status) conds.push(eq(orders.status, status as OrderStatus));
+  if (game) conds.push(eq(orders.game, game));
+  if (from) conds.push(gte(orders.createdAt, new Date(from)));
+  if (to) conds.push(lte(orders.createdAt, new Date(to)));
+
   const db = getDb();
   const rows = await db
     .select()
     .from(orders)
+    .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(orders.createdAt))
     .limit(100);
 

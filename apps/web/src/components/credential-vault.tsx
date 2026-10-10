@@ -50,7 +50,8 @@ export function CredentialVault({ orderId }: { orderId: string }) {
 
   function deposit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     startTransition(async () => {
       setError(null);
       const res = await fetch(`/api/orders/${orderId}/credentials`, {
@@ -69,7 +70,7 @@ export function CredentialVault({ orderId }: { orderId: string }) {
         setError(data.error ?? "Deposit failed");
         return;
       }
-      e.currentTarget.reset();
+      formEl.reset();
       load();
     });
   }

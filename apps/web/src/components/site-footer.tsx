@@ -17,6 +17,12 @@ export function SiteFooter() {
           <Link href="/boost" className="hover:text-hs-chalk">
             Calculator
           </Link>
+          <Link href="/marketplace" className="hover:text-hs-chalk">
+            Marketplace
+          </Link>
+          <Link href="/help" className="hover:text-hs-chalk">
+            Help
+          </Link>
           <Link href="/login" className="hover:text-hs-chalk">
             Sign in
           </Link>

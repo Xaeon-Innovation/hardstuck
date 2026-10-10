@@ -1,11 +1,94 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  isBoosterAlertMuted,
+  isBrowserNotifyEnabled,
+  playBoosterOfferChime,
+  setBoosterAlertMuted,
+  setBrowserNotifyEnabled,
+  unlockBoosterAlertAudio,
+} from "@/lib/booster-alert-sound";
 
 type Props = {
   compact?: boolean;
   onChange?: (online: boolean) => void;
 };
+
+function AlertControls({ compact }: { compact?: boolean }) {
+  const [muted, setMuted] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(false);
+  const [notifyPerm, setNotifyPerm] = useState<NotificationPermission | "unsupported">(
+    "default",
+  );
+
+  useEffect(() => {
+    setMuted(isBoosterAlertMuted());
+    setNotifyOn(isBrowserNotifyEnabled());
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifyPerm(Notification.permission);
+    } else {
+      setNotifyPerm("unsupported");
+    }
+  }, []);
+
+  function toggleMute() {
+    unlockBoosterAlertAudio();
+    const next = !muted;
+    setBoosterAlertMuted(next);
+    setMuted(next);
+  }
+
+  function testSound() {
+    unlockBoosterAlertAudio();
+    playBoosterOfferChime();
+  }
+
+  async function enableBrowserNotify() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    unlockBoosterAlertAudio();
+    const perm =
+      Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+    setNotifyPerm(perm);
+    if (perm === "granted") {
+      setBrowserNotifyEnabled(true);
+      setNotifyOn(true);
+    }
+  }
+
+  function toggleNotify() {
+    if (!notifyOn && notifyPerm !== "granted") {
+      void enableBrowserNotify();
+      return;
+    }
+    const next = !notifyOn;
+    setBrowserNotifyEnabled(next);
+    setNotifyOn(next);
+  }
+
+  const btn =
+    "border border-hs-line px-2.5 py-1.5 text-[10px] uppercase tracking-widest text-hs-mute transition-colors hover:border-hs-signal/50 hover:text-hs-chalk disabled:opacity-40";
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-2 ${compact ? "justify-end" : ""}`}
+    >
+      <button type="button" className={btn} onClick={toggleMute}>
+        Sound {muted ? "off" : "on"}
+      </button>
+      <button type="button" className={btn} onClick={testSound} disabled={muted}>
+        Test sound
+      </button>
+      {notifyPerm !== "unsupported" ? (
+        <button type="button" className={btn} onClick={toggleNotify}>
+          Desktop {notifyOn && notifyPerm === "granted" ? "on" : "off"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 export function BoosterOnlineControl({ compact, onChange }: Props) {
   const [queueOnline, setQueueOnline] = useState<boolean | null>(null);
@@ -51,7 +134,7 @@ export function BoosterOnlineControl({ compact, onChange }: Props) {
 
   if (compact) {
     return (
-      <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-col items-end gap-2">
         <div className="flex overflow-hidden border border-hs-line">
           <button
             type="button"
@@ -88,6 +171,7 @@ export function BoosterOnlineControl({ compact, onChange }: Props) {
             Offline
           </button>
         </div>
+        <AlertControls compact />
         {error ? (
           <span className="max-w-[14rem] text-right text-[10px] text-hs-danger">
             {error}
@@ -168,6 +252,12 @@ export function BoosterOnlineControl({ compact, onChange }: Props) {
             Offline
           </button>
         </div>
+      </div>
+      <div className="mt-4 border-t border-hs-line/60 pt-3">
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-hs-mute">
+          Offer alerts
+        </div>
+        <AlertControls />
       </div>
       {error ? <p className="mt-3 text-sm text-hs-danger">{error}</p> : null}
     </div>

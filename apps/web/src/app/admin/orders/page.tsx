@@ -23,10 +23,15 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [game, setGame] = useState("");
   const [pending, startTransition] = useTransition();
 
   function load() {
-    fetch("/api/admin/orders")
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (game) p.set("game", game);
+    fetch(`/api/admin/orders?${p}`)
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) {
@@ -41,7 +46,8 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, game]);
 
   function act(action: string, orderId?: string) {
     startTransition(async () => {
@@ -84,6 +90,45 @@ export default function AdminOrdersPage() {
         >
           Run timers
         </button>
+      </div>
+
+      <div className="mt-6 flex flex-wrap gap-3">
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
+        >
+          <option value="">All statuses</option>
+          {[
+            "awaiting_payment",
+            "paid",
+            "offered",
+            "assigned",
+            "in_progress",
+            "delivered",
+            "completed",
+            "disputed",
+            "refunded",
+          ].map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={game}
+          onChange={(e) => setGame(e.target.value)}
+          className="border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
+        >
+          <option value="">All games</option>
+          {["lol", "valorant", "overwatch", "marvel_rivals", "apex"].map(
+            (g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ),
+          )}
+        </select>
       </div>
 
         {error ? <p className="mt-4 text-hs-danger">{error}</p> : null}

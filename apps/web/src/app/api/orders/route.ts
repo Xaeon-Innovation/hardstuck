@@ -43,6 +43,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: quote.error }, { status: 400 });
   }
 
+  try {
+    const { assertGameOpenForMatchedPool } = await import(
+      "@/server/games/availability"
+    );
+    await assertGameOpenForMatchedPool(quote.game);
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Game is offline" },
+      { status: 409 },
+    );
+  }
+
+  const { assertUserNotSuspended } = await import("@/server/access/guards");
+  const suspended = await assertUserNotSuspended(session.user.id);
+  if (suspended) {
+    return NextResponse.json({ error: suspended }, { status: 403 });
+  }
+
   const db = getDb();
   const [order] = await db
     .insert(orders)

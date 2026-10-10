@@ -337,11 +337,11 @@ export default function NotificationsPage() {
 
         <div>
 
-          <p className="hs-page-kicker">{roleLabel} · Notifications</p>
+          <p className="hs-page-kicker">{roleLabel} · Orders</p>
 
           <h1 className="hs-page-title">
 
-            Notifications
+            Orders
 
           </h1>
 

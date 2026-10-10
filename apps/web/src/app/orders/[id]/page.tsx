@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-/** Legacy ticket URLs → notifications workspace. */
+/** Legacy ticket URLs → orders workspace. */
 export default function OrderLegacyRedirectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function OrderLegacyRedirectPage() {
 
   return (
     <p className="mx-auto max-w-lg px-5 py-16 text-center text-sm text-hs-mute">
-      Opening notifications…
+      Opening order…
     </p>
   );
 }

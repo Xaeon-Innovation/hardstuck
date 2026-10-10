@@ -26,6 +26,8 @@ export default function SaleDetailPage() {
   } | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [stars, setStars] = useState(5);
+  const [rated, setRated] = useState(false);
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -171,6 +173,56 @@ export default function SaleDetailPage() {
           <p className="text-hs-chalk">Pass: {creds.password}</p>
           {creds.note ? <p className="text-hs-mute">{creds.note}</p> : null}
         </div>
+      ) : null}
+
+      {isBuyer &&
+      (sale.status === "completed" || sale.status === "released") &&
+      !rated ? (
+        <div className="mt-8 max-w-md space-y-3 border border-hs-line p-4">
+          <p className="font-display text-sm uppercase text-hs-signal">
+            Rate seller
+          </p>
+          <select
+            value={stars}
+            onChange={(e) => setStars(Number(e.target.value))}
+            className="w-full border border-hs-line bg-hs-ink px-3 py-2 text-sm text-hs-chalk"
+          >
+            {[5, 4, 3, 2, 1].map((n) => (
+              <option key={n} value={n}>
+                {n} star{n === 1 ? "" : "s"}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              startTransition(async () => {
+                const res = await fetch("/api/accounts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "rate",
+                    saleId: sale.id,
+                    stars,
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                  setError(data.error ?? "Rating failed");
+                  return;
+                }
+                setRated(true);
+              });
+            }}
+            className="hs-btn-primary"
+          >
+            Submit rating
+          </button>
+        </div>
+      ) : null}
+      {rated ? (
+        <p className="mt-4 text-sm text-hs-ok">Thanks for your rating.</p>
       ) : null}
     </SiteShell>
   );

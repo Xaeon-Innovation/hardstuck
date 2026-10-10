@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { GameSlugs } from "@hardstuck/shared";
 import { requireSession } from "@/server/auth/session";
 import {
   deleteGameAccount,
@@ -40,9 +41,9 @@ export async function GET() {
 const accountSchema = z.object({
   action: z.literal("upsert_account"),
   id: z.string().uuid().optional(),
-  game: z.enum(["lol", "valorant"]),
+  game: z.enum(GameSlugs),
   riotName: z.string().min(1).max(40),
-  riotTag: z.string().min(1).max(10),
+  riotTag: z.string().min(1).max(16),
   server: z.string().min(1).max(32),
   profileUrl: z.string().max(500).optional(),
   note: z.string().max(300).optional(),
@@ -112,7 +113,13 @@ export async function POST(req: Request) {
     if (action === "upsert_account") {
       const parsed = accountSchema.safeParse(body);
       if (!parsed.success) {
-        return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+        const fieldMsg = Object.entries(parsed.error.flatten().fieldErrors)
+          .map(([k, v]) => `${k}: ${(v ?? []).join(", ")}`)
+          .join("; ");
+        return NextResponse.json(
+          { error: fieldMsg || "Invalid account data" },
+          { status: 400 },
+        );
       }
       const account = await upsertGameAccount({
         userId: session.user.id,

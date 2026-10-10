@@ -28,8 +28,81 @@ import {
   IconShield,
   IconSolo,
 } from "@/components/icons";
+import {
+  RankStatsPanel,
+  type RankStatsView,
+} from "@/components/rank-stats-panel";
 
 const EUR_PER_USD = Number(process.env.NEXT_PUBLIC_EUR_PER_USD ?? "0.92");
+
+function matchCatalogRank(
+  ranks: { key: string; label: string }[],
+  hint?: string | null,
+  label?: string | null,
+): string | null {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .trim()
+      // Strip OW "tank: gold 2" role prefixes.
+      .replace(/^(tank|damage|dps|support|open)\s*:\s*/i, "")
+      .replace(/\s+/g, "_")
+      .replace(/-/g, "_");
+
+  const expand = (c: string): string[] => {
+    if (!c || c === "unranked" || c === "none") return [];
+    const toRoman = c
+      .replace(/_1$/, "_i")
+      .replace(/_2$/, "_ii")
+      .replace(/_3$/, "_iii")
+      .replace(/_4$/, "_iv")
+      .replace(/_5$/, "_v");
+    const toArabic = c
+      .replace(/_iv$/, "_4")
+      .replace(/_iii$/, "_3")
+      .replace(/_ii$/, "_2")
+      .replace(/_i$/, "_1")
+      .replace(/_v$/, "_5");
+    return [...new Set([c, toRoman, toArabic])];
+  };
+
+  const candidates = [hint, label]
+    .filter(Boolean)
+    .flatMap((s) => expand(normalize(String(s))));
+
+  for (const c of candidates) {
+    const exact = ranks.find((r) => r.key === c);
+    if (exact) return exact.key;
+  }
+  for (const c of candidates) {
+    const byLabel = ranks.find(
+      (r) => normalize(r.label) === c || r.key === c,
+    );
+    if (byLabel) return byLabel.key;
+  }
+  for (const c of candidates) {
+    const soft = ranks.find(
+      (r) =>
+        r.key === c ||
+        normalize(r.label) === c ||
+        (c.length >= 4 &&
+          (r.key.startsWith(c) || c.startsWith(r.key))),
+    );
+    if (soft) return soft.key;
+  }
+  return null;
+}
+
+function lpBandFromPoints(
+  lp: number | null | undefined,
+): (typeof LP_BANDS)[number]["key"] | null {
+  if (lp == null || !Number.isFinite(lp) || lp < 0) return null;
+  if (lp <= 20) return "0_20";
+  if (lp <= 40) return "21_40";
+  if (lp <= 60) return "41_60";
+  if (lp <= 80) return "61_80";
+  return "81_100";
+}
 
 const ADDON_ICON: Record<string, React.ReactNode> = {
   priority: <IconBolt className="h-4 w-4" />,
@@ -139,26 +212,41 @@ function Segmented<T extends string>({
   );
 }
 
+type GameAvailMap = Partial<
+  Record<GameSlug, { status: "open" | "offline"; reason?: string }>
+>;
+
 function GamePicker({
   value,
   onChange,
+  availability,
 }: {
   value: GameSlug;
   onChange: (g: GameSlug) => void;
+  availability: GameAvailMap;
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
       {GameSlugs.map((g) => {
         const active = g === value;
+        const offline = availability[g]?.status === "offline";
         return (
           <button
             key={g}
             type="button"
+            disabled={offline}
             onClick={() => onChange(g)}
+            title={
+              offline
+                ? availability[g]?.reason ?? "No boosters online"
+                : undefined
+            }
             className={`group relative h-24 overflow-hidden border text-left transition-all ${
-              active
-                ? "border-hs-signal shadow-[0_0_0_1px_rgba(232,163,23,0.35)]"
-                : "border-hs-line hover:border-hs-steel"
+              offline
+                ? "cursor-not-allowed border-hs-line/50 opacity-45"
+                : active
+                  ? "border-hs-signal shadow-[0_0_0_1px_rgba(232,163,23,0.35)]"
+                  : "border-hs-line hover:border-hs-steel"
             }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -177,7 +265,9 @@ function GamePicker({
                 {CATALOGS[g].shortName}
               </span>
               <span className="truncate text-[10px] text-hs-mute">
-                {gameLabel(g)}
+                {offline
+                  ? availability[g]?.reason ?? "No boosters online"
+                  : gameLabel(g)}
               </span>
             </div>
           </button>
@@ -193,12 +283,20 @@ function RankGrid({
   value,
   onChange,
   label,
+  /** When set, ranks at this index or below cannot be chosen (Desired > Current). */
+  minExclusiveIndex,
+  /** Lock the whole grid (synced current) until the user unlocks. */
+  locked,
+  onUnlock,
 }: {
   game: GameSlug;
   ranks: { key: string; label: string }[];
   value: string;
   onChange: (key: string) => void;
   label: string;
+  minExclusiveIndex?: number;
+  locked?: boolean;
+  onUnlock?: () => void;
 }) {
   const selected = ranks.find((r) => r.key === value);
   return (
@@ -207,34 +305,70 @@ function RankGrid({
         <h3 className="font-display text-sm uppercase tracking-widest text-hs-mute">
           {label}
         </h3>
-        <div className="flex items-center gap-2 text-xs text-hs-signal">
-          {selected ? (
-            <RankCrest game={game} rankKey={selected.key} size={22} />
-          ) : null}
-          {selected?.label}
+        {!locked ? (
+          <div className="flex items-center gap-2 text-xs text-hs-signal">
+            {selected ? (
+              <RankCrest game={game} rankKey={selected.key} size={22} />
+            ) : null}
+            {selected?.label}
+          </div>
+        ) : null}
+      </div>
+      {locked && selected ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-6">
+          <RankCrest game={game} rankKey={selected.key} size={88} />
+          <p className="font-display text-2xl uppercase tracking-wide text-hs-chalk">
+            {selected.label}
+          </p>
+          <p className="text-[10px] uppercase tracking-widest text-hs-mute">
+            Synced from profile
+          </p>
         </div>
-      </div>
-      <div className="hs-scroll grid max-h-[280px] grid-cols-1 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
-        {ranks.map((rank) => {
-          const active = rank.key === value;
-          return (
-            <motion.button
-              key={rank.key}
-              type="button"
-              whileTap={{ scale: 0.97 }}
-              onClick={() => onChange(rank.key)}
-              className={`flex items-center gap-2 border px-2 py-2 text-left text-xs transition-colors ${
-                active
-                  ? "border-hs-signal bg-hs-signal/15 text-hs-chalk"
-                  : "border-hs-line bg-hs-ink/40 text-hs-mute hover:border-hs-steel hover:text-hs-chalk"
-              }`}
-            >
-              <RankCrest game={game} rankKey={rank.key} size={26} />
-              <span className="leading-tight">{rank.label}</span>
-            </motion.button>
-          );
-        })}
-      </div>
+      ) : (
+        <div className="hs-scroll grid max-h-[280px] grid-cols-1 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+          {ranks.map((rank, index) => {
+            const active = rank.key === value;
+            const tooLow =
+              minExclusiveIndex != null && index <= minExclusiveIndex;
+            const disabled = tooLow;
+            return (
+              <motion.button
+                key={rank.key}
+                type="button"
+                disabled={disabled}
+                whileTap={disabled ? undefined : { scale: 0.97 }}
+                onClick={() => {
+                  if (!disabled) onChange(rank.key);
+                }}
+                title={
+                  tooLow
+                    ? "Desired rank must be higher than current"
+                    : undefined
+                }
+                className={`flex items-center gap-2 border px-2 py-2 text-left text-xs transition-colors ${
+                  active
+                    ? "border-hs-signal bg-hs-signal/15 text-hs-chalk"
+                    : disabled
+                      ? "cursor-not-allowed border-hs-line/40 bg-hs-ink/20 text-hs-mute/40"
+                      : "border-hs-line bg-hs-ink/40 text-hs-mute hover:border-hs-steel hover:text-hs-chalk"
+                }`}
+              >
+                <RankCrest game={game} rankKey={rank.key} size={26} />
+                <span className="leading-tight">{rank.label}</span>
+              </motion.button>
+            );
+          })}
+        </div>
+      )}
+      {locked && onUnlock ? (
+        <button
+          type="button"
+          onClick={onUnlock}
+          className="text-left text-[10px] uppercase tracking-widest text-hs-signal hover:underline"
+        >
+          Is rank wrong? Select the right one
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -371,6 +505,121 @@ export function BoostCalculator() {
   const [unitKey, setUnitKey] = useState("any");
   const [startLevel, setStartLevel] = useState(1);
   const [endLevel, setEndLevel] = useState(21);
+  const [availability, setAvailability] = useState<GameAvailMap>({});
+  const [profileName, setProfileName] = useState("");
+  const [profileTag, setProfileTag] = useState("");
+  const [profileSnap, setProfileSnap] = useState<RankStatsView | null>(null);
+  const [profileSynced, setProfileSynced] = useState(false);
+  /** When false after a sync, Current grid stays locked until the user unlocks. */
+  const [currentUnlocked, setCurrentUnlocked] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/games/availability")
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || cancelled) return;
+        const map: GameAvailMap = {};
+        for (const row of data.games ?? []) {
+          map[row.game as GameSlug] = {
+            status: row.status,
+            reason: row.reason,
+          };
+        }
+        setAvailability(map);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function applyLiveRank(result: RankStatsView, forGame: GameSlug = game) {
+    const ranks = CATALOGS[forGame].ranks;
+    const unranked = /^unranked$/i.test(result.rankLabel ?? "");
+    const key = matchCatalogRank(
+      ranks,
+      result.rankKeyHint,
+      unranked ? null : result.rankLabel,
+    );
+    // If current split is empty, fall back to peak so the calculator still syncs.
+    const peakKey =
+      !key && result.peakLabel
+        ? matchCatalogRank(ranks, null, result.peakLabel)
+        : null;
+    const resolved = key ?? peakKey;
+    if (resolved) {
+      setStart(resolved);
+      setEnd((prevEnd) => {
+        const startIdx = ranks.findIndex((r) => r.key === resolved);
+        const endIdx = ranks.findIndex((r) => r.key === prevEnd);
+        if (startIdx >= 0 && (endIdx < 0 || endIdx <= startIdx)) {
+          return ranks[Math.min(startIdx + 4, ranks.length - 1)]!.key;
+        }
+        return prevEnd;
+      });
+      setProfileSynced(true);
+      setCurrentUnlocked(false);
+    }
+    if (forGame === "lol" || forGame === "valorant") {
+      const band = lpBandFromPoints(result.lpOrRr);
+      if (band) setLp(band);
+    }
+  }
+
+  // Prefill from linked Game Accounts for the selected title.
+  useEffect(() => {
+    let cancelled = false;
+    setProfileName("");
+    setProfileTag("");
+    setProfileSnap(null);
+    setProfileSynced(false);
+    setCurrentUnlocked(true);
+    fetch("/api/trust/me")
+      .then(async (r) => {
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        const accounts = (data.accounts ?? []) as {
+          game: string;
+          riotName: string;
+          riotTag: string;
+          server: string;
+          rankSnapshot?: RankStatsView | null;
+        }[];
+        const match = accounts.find((a) => a.game === game);
+        if (!match || cancelled) return;
+        setProfileName(match.riotName);
+        setProfileTag(
+          /^(pc|psn|ps4|xbox|x1|—|-)$/i.test(match.riotTag)
+            ? ""
+            : match.riotTag,
+        );
+        if (
+          match.server &&
+          CATALOGS[game].servers.some((s) => s.key === match.server)
+        ) {
+          setServer(match.server);
+        }
+        const snap =
+          match.rankSnapshot &&
+          typeof match.rankSnapshot === "object" &&
+          "ok" in match.rankSnapshot
+            ? (match.rankSnapshot as RankStatsView)
+            : null;
+        if (snap?.ok || snap?.rankLabel || snap?.rankKeyHint) {
+          setProfileSnap(snap);
+          applyLiveRank(snap, game);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Only re-run when game changes — applyLiveRank uses catalog for that game.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game]);
+
+  const gameOffline = availability[game]?.status === "offline";
 
   const gameSkus = skusForGame(game);
   const tabSkus = gameSkus.filter((s) => tabForSku(s) === skuTab);
@@ -515,6 +764,12 @@ export function BoostCalculator() {
 
   function onCheckout() {
     if (!quote.ok) return;
+    if (gameOffline) {
+      setSubmitError(
+        availability[game]?.reason ?? "No boosters online for this game",
+      );
+      return;
+    }
     setSubmitError(null);
     startTransition(async () => {
       const res = await fetch("/api/orders", {
@@ -575,7 +830,17 @@ export function BoostCalculator() {
         </p>
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
       <div className="flex flex-col gap-5">
-        <GamePicker value={game} onChange={switchGame} />
+        <GamePicker
+          value={game}
+          onChange={switchGame}
+          availability={availability}
+        />
+        {gameOffline ? (
+          <p className="mt-2 text-sm text-hs-danger">
+            {availability[game]?.reason ?? "No boosters online"} — matched-pool
+            checkout is paused for this game.
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
           <Segmented
@@ -697,16 +962,65 @@ export function BoostCalculator() {
                 label="Current"
                 ranks={catalog.ranks}
                 value={startRankKey}
-                onChange={setStart}
+                locked={profileSynced && !currentUnlocked}
+                onUnlock={() => setCurrentUnlocked(true)}
+                onChange={(key) => {
+                  setStart(key);
+                  setProfileSynced(false);
+                  const startIdx = catalog.ranks.findIndex((r) => r.key === key);
+                  setEnd((prevEnd) => {
+                    const endIdx = catalog.ranks.findIndex(
+                      (r) => r.key === prevEnd,
+                    );
+                    if (startIdx >= 0 && endIdx <= startIdx) {
+                      return catalog.ranks[
+                        Math.min(startIdx + 1, catalog.ranks.length - 1)
+                      ]!.key;
+                    }
+                    return prevEnd;
+                  });
+                }}
               />
               <RankGrid
                 game={game}
                 label="Desired"
                 ranks={catalog.ranks}
                 value={endRankKey}
+                minExclusiveIndex={catalog.ranks.findIndex(
+                  (r) => r.key === startRankKey,
+                )}
                 onChange={setEnd}
               />
             </div>
+            <RankStatsPanel
+              game={game}
+              defaultName={profileName}
+              defaultTag={profileTag}
+              defaultServer={server}
+              initialResult={profileSnap}
+              autoLookup={Boolean(profileName)}
+              allowManualRank
+              onResult={(result) => {
+                setProfileSnap(result);
+                if (result.ok || result.rankKeyHint || result.rankLabel) {
+                  applyLiveRank(result);
+                }
+              }}
+              onConfirmRank={(hint, result) => {
+                applyLiveRank({
+                  ...result,
+                  rankKeyHint: hint,
+                });
+              }}
+            />
+            {profileSynced ? (
+              <p className="text-xs text-hs-ok">
+                Current rank synced from profile
+                {profileName
+                  ? ` · ${profileName}${profileTag ? `#${profileTag}` : ""}`
+                  : ""}
+              </p>
+            ) : null}
             <div className="hs-panel grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
               {(
                 [
@@ -1011,11 +1325,15 @@ export function BoostCalculator() {
 
         <button
           type="button"
-          disabled={!quote.ok || pending}
+          disabled={!quote.ok || pending || gameOffline}
           onClick={onCheckout}
           className="hs-btn-primary relative z-10 mt-1 w-full"
         >
-          {pending ? "Creating order…" : "Continue to checkout"}
+          {pending
+            ? "Creating order…"
+            : gameOffline
+              ? "Game offline"
+              : "Continue to checkout"}
         </button>
         <p className="relative z-10 text-[11px] leading-relaxed text-hs-mute">
           Boosting can violate publisher Terms of Service and may risk account

@@ -11,7 +11,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [closedBeta, setClosedBeta] = useState(true);
+  const [closedBeta, setClosedBeta] = useState(false);
 
   useEffect(() => {
     fetch("/api/beta/register")
@@ -19,7 +19,7 @@ export default function RegisterPage() {
         const data = await r.json();
         setClosedBeta(Boolean(data.closedBeta));
       })
-      .catch(() => setClosedBeta(true));
+      .catch(() => setClosedBeta(false));
   }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -72,16 +72,24 @@ export default function RegisterPage() {
 
   return (
     <SiteShell>
-      <p className="hs-page-kicker">Closed beta</p>
-      <h1 className="hs-page-title">Create account</h1>
+      <p className="hs-page-kicker">
+        {closedBeta ? "Closed beta" : "Join"}
+      </p>
+      <h1 className="hs-page-title">Create gamer account</h1>
       <p className="hs-page-lead">
-        Boosting may violate publisher Terms of Service and can risk account
-        sanctions. Proceed only if you accept that risk.
+        Sign up to buy boosts and marketplace offers. This creates a{" "}
+        <span className="text-hs-chalk">gamer</span> account — not a booster.
+        Want to boost? Register here first, then redeem a booster invite on{" "}
+        <Link href="/account" className="text-hs-signal underline">
+          profile
+        </Link>
+        .
       </p>
 
       {closedBeta ? (
         <p className="mt-5 max-w-md border border-hs-signal/40 bg-hs-signal/10 px-3 py-2 text-xs text-hs-signal">
-          Invite code required for closed beta.
+          Invite code required for closed beta (gamer invites from Ops → Trust —
+          not booster invites).
         </p>
       ) : null}
 
@@ -110,17 +118,10 @@ export default function RegisterPage() {
           <input
             name="inviteCode"
             required
-            placeholder="Invite code"
+            placeholder="Gamer invite code"
             className="hs-input"
           />
         ) : null}
-        <p className="text-xs text-hs-mute">
-          Boosters redeem a separate invite later on{" "}
-          <Link href="/account" className="text-hs-signal underline">
-            profile
-          </Link>
-          .
-        </p>
         <label className="flex items-start gap-2 text-sm text-hs-mute">
           <input name="risk" type="checkbox" className="mt-1 accent-hs-signal" />
           I understand HardStuck is a gray-market boosting service and accept
@@ -128,7 +129,7 @@ export default function RegisterPage() {
         </label>
         {error ? <p className="text-sm text-hs-danger">{error}</p> : null}
         <button type="submit" disabled={pending} className="hs-btn-primary">
-          {pending ? "Creating…" : "Register"}
+          {pending ? "Creating…" : "Register as gamer"}
         </button>
       </form>
       <Link

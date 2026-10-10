@@ -1,10 +1,12 @@
-import { Suspense } from "react";
-import AccountsClient from "./accounts-client";
+import { redirect } from "next/navigation";
 
-export default function AccountsPage() {
-  return (
-    <Suspense fallback={<p className="p-8 text-hs-mute">Loading…</p>}>
-      <AccountsClient />
-    </Suspense>
-  );
+export default async function AccountsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ game?: string }>;
+}) {
+  const sp = await searchParams;
+  const q = new URLSearchParams({ category: "account" });
+  if (sp.game) q.set("game", sp.game);
+  redirect(`/marketplace?${q.toString()}`);
 }

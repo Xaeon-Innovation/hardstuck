@@ -120,6 +120,26 @@ export function gameHeroSrc(game: GameSlug): string {
   }
 }
 
+/** Compact brand mark for filters / chips under /games/logos. */
+export function gameLogoSrc(game: GameSlug | "all"): string {
+  switch (game) {
+    case "all":
+      return "/games/logos/all.svg";
+    case "lol":
+      return "/games/logos/lol.svg";
+    case "valorant":
+      return "/games/logos/valorant.svg";
+    case "overwatch":
+      return "/games/logos/Overwatch_2_logo.svg.webp";
+    case "marvel_rivals":
+      return "/games/logos/MRLogo.jpg";
+    case "apex":
+      return "/games/logos/apex.svg";
+    default:
+      return "/games/logos/all.svg";
+  }
+}
+
 export function gameLabel(game: GameSlug): string {
   return CATALOGS[game]?.name ?? game;
 }

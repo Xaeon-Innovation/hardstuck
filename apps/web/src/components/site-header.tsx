@@ -109,16 +109,13 @@ export function SiteHeader() {
         {/* Desktop */}
         <nav className="hidden items-center gap-5 text-sm md:flex">
           <NavLink href="/boost">Calculator</NavLink>
-          <NavLink href="/accounts">Accounts</NavLink>
-          {signedIn && !isBoosterUser ? (
-            <NavLink href="/notifications">Orders</NavLink>
-          ) : null}
+          <NavLink href="/marketplace">Marketplace</NavLink>
           {signedIn ? (
             <Link
               href="/notifications"
               className="relative text-hs-mute transition-colors hover:text-hs-chalk"
             >
-              Notifications
+              Orders
               {alertCount > 0 ? (
                 <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center bg-hs-signal px-1 text-[9px] font-bold text-hs-ink">
                   {alertCount > 9 ? "9+" : alertCount}
@@ -142,7 +139,11 @@ export function SiteHeader() {
                 <div className="absolute right-0 top-full z-50 mt-2 min-w-[10rem] border border-hs-line bg-hs-panel py-1 shadow-xl">
                   {(
                     [
+                      ["/admin", "Dashboard"],
                       ["/admin/orders", "Orders"],
+                      ["/admin/tickets", "Tickets"],
+                      ["/admin/access", "Access"],
+                      ["/admin/games", "Games"],
                       ["/admin/trust", "Trust"],
                       ["/admin/payouts", "Payouts"],
                       ["/admin/accounts", "Accounts"],
@@ -209,14 +210,9 @@ export function SiteHeader() {
           <NavLink href="/boost" onClick={close}>
             Calculator
           </NavLink>
-          <NavLink href="/accounts" onClick={close}>
-            Accounts
+          <NavLink href="/marketplace" onClick={close}>
+            Marketplace
           </NavLink>
-          {signedIn && !isBoosterUser ? (
-            <NavLink href="/notifications" onClick={close}>
-              Orders
-            </NavLink>
-          ) : null}
           {role === "admin" ? (
             <NavLink href="/booster" onClick={close}>
               Booster
@@ -224,14 +220,26 @@ export function SiteHeader() {
           ) : null}
           {signedIn ? (
             <NavLink href="/notifications" onClick={close}>
-              Notifications
+              Orders
               {alertCount > 0 ? ` (${alertCount})` : ""}
             </NavLink>
           ) : null}
           {role === "admin" ? (
             <>
+              <NavLink href="/admin" onClick={close}>
+                Admin dashboard
+              </NavLink>
               <NavLink href="/admin/orders" onClick={close}>
                 Admin orders
+              </NavLink>
+              <NavLink href="/admin/tickets" onClick={close}>
+                Tickets
+              </NavLink>
+              <NavLink href="/admin/access" onClick={close}>
+                Access
+              </NavLink>
+              <NavLink href="/admin/games" onClick={close}>
+                Games
               </NavLink>
               <NavLink href="/admin/trust" onClick={close}>
                 Trust
